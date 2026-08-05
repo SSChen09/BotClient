@@ -545,11 +545,12 @@ async def SendGameMessage(api: BotAPI, message: GroupMessage, params=None):
     nick = await NicknameRepositoryInstance.GetName(message.group_openid, message.author.member_openid)
 
     #直接获取QQ Username
-    """if nick is None and not isFull:
-        await message.reply(content="没有找到你的昵称数据，请使用/设置名称 <昵称>来设置")
-        return True"""
     if nick is None:
         nick = message.author.username
+
+    if nick is None and not isFull:
+        await message.reply(content="没有找到你的昵称数据，请使用/设置名称 <昵称>来设置")
+        return True
 
     unique_id = str(uuid.uuid4())
 
