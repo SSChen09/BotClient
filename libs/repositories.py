@@ -192,6 +192,14 @@ async def InitDb():
             )
             """
         )
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS adminMode (
+                `group` TEXT PRIMARY KEY,
+                `mode` TEXT NOT NULL DEFAULT 'onlyAdd'
+            )
+            """
+        )
         await db.commit()
 
 
@@ -345,6 +353,41 @@ class AdminRepository:
             await session.Execute(
                 "DELETE FROM adminList WHERE `group` = ? AND `author` = ?",
                 (group_id, author),
+            )
+            await session.Commit()
+        finally:
+            await session.Close()
+        return True
+
+
+class AdminModeRepository:
+    """负责管理群的管理员判定方式配置。"""
+
+    def __init__(self, db_path: str = DATABASE_PATH):
+        """记录仓储使用的数据库路径。"""
+        self.db_path = db_path
+
+    async def GetMode(self, group_id: str) -> str:
+        """读取当前群的管理员判定方式，未配置时默认返回 'onlyAdd'。"""
+        session = SQLiteSession(self.db_path)
+        await session.Connect()
+        try:
+            row = await session.FetchOne(
+                "SELECT `mode` FROM adminMode WHERE `group` = ?",
+                (group_id,),
+            )
+        finally:
+            await session.Close()
+        return row[0] if row else "onlyAdd"
+
+    async def SetMode(self, group_id: str, mode: str):
+        """写入当前群的管理员判定方式。"""
+        session = SQLiteSession(self.db_path)
+        await session.Connect()
+        try:
+            await session.Execute(
+                "INSERT OR REPLACE INTO adminMode (`group`, `mode`) VALUES (?, ?)",
+                (group_id, mode),
             )
             await session.Commit()
         finally:
@@ -667,6 +710,7 @@ class ChatAllowListRepository:
 PendingBindStoreInstance = PendingBindStore()
 BindRepositoryInstance = BindRepository()
 AdminRepositoryInstance = AdminRepository()
+AdminModeRepositoryInstance = AdminModeRepository()
 NicknameRepositoryInstance = NicknameRepository()
 MotdBlockRepositoryInstance = MotdBlockRepository()
 AuthRepositoryInstance = AuthRepository()
@@ -675,6 +719,8 @@ ChatAllowListRepositoryInstance = ChatAllowListRepository()
 
 
 __all__ = [
+    "AdminModeRepository",
+    "AdminModeRepositoryInstance",
     "AdminRepository",
     "AdminRepositoryInstance",
     "AuthRepository",

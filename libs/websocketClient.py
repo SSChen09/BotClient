@@ -4,6 +4,7 @@ import ssl
 import uuid
 
 import websockets
+from websockets.protocol import State
 from ymbotpy import logging
 
 from libs.chatService import ChatManager
@@ -325,7 +326,18 @@ class WebsocketClient:
         await self.Reconnect()
 
     async def _SendMsg(self, event_type, body, request_id=None):
-        """向当前 WebSocket 连接发送一条消息。"""
+        """向当前 WebSocket 连接发送一条消息。
+
+        当发送时遇到致命错误（连接已断开、keepalive ping 超时等），
+        会主动关闭死连接并触发全局重连流程。
+        """
+        _FATAL_SEND_ERRORS = (
+            websockets.exceptions.ConnectionClosed,
+            websockets.exceptions.WebSocketException,
+            ConnectionResetError,
+            BrokenPipeError,
+        )
+
         if request_id is None:
             request_id = str(uuid.uuid4())
         if self.ws is None:
@@ -336,6 +348,14 @@ class WebsocketClient:
         try:
             await self.ws.send(message)
             return True
+        except _FATAL_SEND_ERRORS as exc:
+            logger.error(f"[Websocket] 发送消息时连接已断开: {exc}，触发重连")
+            dead_ws = self.ws
+            self.ws = None
+            self._shook_hands = False
+            asyncio.create_task(self._SafeClose(dead_ws))
+            asyncio.create_task(self.Reconnect())
+            return False
         except Exception as exc:
             logger.error(f"[Websocket] 发送消息失败: {exc}")
             return False
@@ -363,9 +383,18 @@ class WebsocketClient:
         """主动关闭当前连接和关联任务。"""
         await self._Cleanup()
 
+    async def _SafeClose(self, dead_ws):
+        """安全关闭一个已断开的 WebSocket 连接，忽略任何异常。"""
+        if dead_ws is None:
+            return
+        try:
+            await dead_ws.close()
+        except Exception:
+            pass
+
     def IsActive(self):
         """判断当前 WebSocket 是否处于可用状态。"""
-        return self.ws is not None
+        return self.ws is not None and self.ws.state == State.OPEN
 
     async def SendMsgByServerId(self, server_id, event_type: str, msg: dict, unique_id=None):
         """按服务器编号向服务端发送业务消息。"""

@@ -15,7 +15,7 @@ from libs.chatService import ApplySensitiveFilter
 from libs.configManager import ConfigManager
 from libs.keyboardManager import KeyboardPayloadFromJson
 from libs.markdownManager import mdManager
-from libs.repositories import AdminRepositoryInstance, AuthRepositoryInstance, BindRepositoryInstance
+from libs.repositories import AdminModeRepositoryInstance, AdminRepositoryInstance, AuthRepositoryInstance, BindRepositoryInstance
 from libs.switchAvatars import CompareQQAvatars, GenerateQQAvatarCompareImage
 
 PERMISSION_DENIED_TEXT = "你没有足够的权限."
@@ -33,9 +33,20 @@ class CommandGuardService:
         """绑定当前命令所属的群消息。"""
         self.message = message
 
-    async def RequireAdmin(self,onlyCheck=False) -> bool:
-        """校验当前消息发送者是否为群管理员。"""
-        if await AdminRepositoryInstance.IsAdmin(self.message.group_openid, self.message.author.member_openid):
+    async def RequireAdmin(self, onlyCheck=False) -> bool:
+        """校验当前消息发送者是否为群管理员（根据群配置的判定方式）。"""
+        mode = await AdminModeRepositoryInstance.GetMode(self.message.group_openid)
+        qq_admin = self.message.author.member_role in ("owner", "admin")
+        db_admin = await AdminRepositoryInstance.IsAdmin(
+            self.message.group_openid, self.message.author.member_openid
+        )
+        if mode == "onlyQQ":
+            is_admin = qq_admin
+        elif mode == "both":
+            is_admin = qq_admin and db_admin
+        else:
+            is_admin = db_admin
+        if is_admin:
             return True
         if not onlyCheck:
             await self.message.reply(content=PERMISSION_DENIED_TEXT)

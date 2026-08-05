@@ -31,6 +31,7 @@ from libs.commandHelper import (
 from libs.configManager import ConfigManager
 from libs.motdService import MOTD_USAGE_TEXT, MotdCommandService
 from libs.repositories import (
+    AdminModeRepositoryInstance,
     AdminRepositoryInstance,
     AuthRepositoryInstance,
     BindRepositoryInstance,
@@ -440,6 +441,45 @@ async def DelAdminCommand(api: BotAPI, message: GroupMessage, params=None):
         await reply_service.PostSensitiveMessage(f"已为本群删除OpenId:{params}的管理员")
     return True
 
+
+MODE_NAMES = {
+    "onlyQQ": "QQ群主/管理员判定",
+    "onlyAdd": "手动添加管理员判定",
+    "both": "双重要求判定",
+}
+
+
+@Commands("管理方式")
+async def SetAdminModeCommand(api: BotAPI, message: GroupMessage, params=None):
+    """查询或设置当前群的管理员判定方式。"""
+    guard_service = CommandGuardService(message)
+    if not await guard_service.RequireAdmin():
+        return True
+
+    mode_map = {
+        "QQ": "onlyQQ",
+        "手动": "onlyAdd",
+        "双重": "both",
+    }
+
+    if not params:
+        current_mode = await AdminModeRepositoryInstance.GetMode(message.group_openid)
+        current_name = MODE_NAMES.get(current_mode, current_mode)
+        await message.reply(content=f"当前群的管理员判定方式：{current_name}\n可选方式：QQ / 手动 / 双重")
+        return True
+
+    param = params.strip()
+    if param in mode_map:
+        new_mode = mode_map[param]
+        await AdminModeRepositoryInstance.SetMode(message.group_openid, new_mode)
+        new_name = MODE_NAMES.get(new_mode, new_mode)
+        reply_service = MessageReplyService(api, message)
+        await reply_service.PostSensitiveMessage(f"已将本群管理员判定方式设置为：{new_name}")
+    else:
+        await message.reply(content="无效的判定方式。可选：QQ / 手动 / 双重")
+    return True
+
+
 @Commands("设置名称")
 async def SetGroupName(api: BotAPI, message: GroupMessage, params=None):
     """设置或强制修改群服互通昵称。"""
@@ -503,9 +543,13 @@ async def SendGameMessage(api: BotAPI, message: GroupMessage, params=None):
     # 全量转发模式下消息已自动转发，静默跳过
     isFull = await FullAmountRepositoryInstance.IsEnabled(message.group_openid)
     nick = await NicknameRepositoryInstance.GetName(message.group_openid, message.author.member_openid)
-    if nick is None and not isFull:
+
+    #直接获取QQ Username
+    """if nick is None and not isFull:
         await message.reply(content="没有找到你的昵称数据，请使用/设置名称 <昵称>来设置")
-        return True
+        return True"""
+    if nick is None:
+        nick = message.author.username
 
     unique_id = str(uuid.uuid4())
 
@@ -974,7 +1018,10 @@ async def BroadcastMemberEventPack2Server(action:str,event: GroupMemberEvent):
     memberId = event.member_openid
     server_id_list = await BindRepositoryInstance.GetByGroup(groupId)
     server_instance = ServerManagerInstance.GetWsServer()
-    """
+
+    #个人信息
+    nick = await NicknameRepositoryInstance.GetName(event.group_openid, event.member_openid)
+    bind_qq = await AuthRepositoryInstance.GetBoundQQ(event.group_openid, event.member_openid)
     for server_id in server_id_list:
         await server_instance.SendMsgByServerId(
                 server_id,
@@ -983,8 +1030,10 @@ async def BroadcastMemberEventPack2Server(action:str,event: GroupMemberEvent):
                     "action": action,
                     "groupId": groupId,
                     "memberId": memberId,
+                    "nick": nick,
+                    "bind_qq": bind_qq,
                 },
-        )"""
+        )
 
 class BaseBotMixin:
     """提供群消息分发与公共事件处理逻辑。"""
@@ -1023,6 +1072,7 @@ class BaseBotMixin:
             QueryAdminCommand,
             AddAdminCommand,
             DelAdminCommand,
+            SetAdminModeCommand,
             Motd,
             UnblockMotd,
             BlockMotd,
@@ -1063,6 +1113,7 @@ class BaseBotMixin:
     """群消息事件(无需@)"""
     async def on_group_message_create(self, message: GroupMessage):
         """处理群消息。"""
+
         await self.on_group_at_message_create(message)
 
     """消息审核不通过"""
@@ -1075,6 +1126,7 @@ class BaseBotMixin:
     async def on_group_add_robot(self, event: GroupManageEvent):
         """在机器人入群后发送欢迎和使用指引。"""
         bot_name = _config_manager.Get("BotName", ConfigManager.DEFAULT_BOT_NAME)
+        defaultText = f"欢迎使用{bot_name}，首次使用请根据文档中的快速开始进行配置，文档可扫描上方二维码或手动输入网址.\n操作过程中需要@我(打开全量后无需@)，如:@{bot_name} /绑定 xxx\n欢迎加入交流群：1005746321\n建议按照文档操作打开机器人全量功能，主动消息体验效果更好!\n如需更改管理员授权方式，请使用\"/管理方式\"进行修改"
         try:
             upload_media = await self.bot_api.post_group_file(
                 event.group_openid,
@@ -1086,7 +1138,7 @@ class BaseBotMixin:
                 group_openid=event.group_openid,
                 msg_type=7,
                 event_id=event.event_id,
-                content=f"欢迎使用{bot_name}，首次使用请根据文档中的快速开始进行配置，文档可扫描上方二维码或手动输入网址.\n操作过程中需要@我(打开全量后无需@)，如:@{bot_name} /绑定 xxx\n欢迎加入交流群：1005746321\n建议按照文档操作打开机器人全量功能，主动消息体验效果更好!",
+                content=defaultText,
                 media=upload_media,
                 msg_seq=1,
             )
@@ -1096,7 +1148,7 @@ class BaseBotMixin:
                 group_openid=event.group_openid,
                 msg_type=0,
                 event_id=event.event_id,
-                content=f'欢迎使用{bot_name}，首次使用请根据文档中的快速开始进行配置,(图片发送失败,请稍后使用"@{bot_name} /帮助"进行查询)\n操作过程中需要@我(打开全量后无需@)，如:@{bot_name} /绑定 xxx\n欢迎加入交流群：1005746321\n建议按照文档操作打开机器人全量功能，主动消息体验效果更好!',
+                content=f'(图片发送失败,请稍后使用"@{bot_name} /帮助"进行查询)\n{defaultText}',
             )
 
     """互动(按钮)触发事件"""

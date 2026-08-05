@@ -41,7 +41,7 @@ class SimpleSensitiveFilter:
     # 匹配时跳过的干扰字符（空格、特殊符号等）
     SKIP_CHARS = set(" \t\r\n\u3000*·.,-_—–=+!@#$%^&()[]{}|/\\~`'\"""''；;：:，。、？?！!…")
     # 纯ASCII词的最小长度（过滤掉 "b"、"test" 这类过短的英文敏感词）
-    MIN_ASCII_LEN = 5
+    MIN_ASCII_LEN = 2
 
     def __init__(self, dir_path="sensitive-words"):
         self.trie = {}
