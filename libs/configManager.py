@@ -20,6 +20,8 @@ class ConfigData(TypedDict):
     EnableMotd: bool
     EnableAuth: bool
     EnableSensitiveFilter: bool
+    EnableChatAllowList: bool
+    EnableIfdianActive: bool
     AuditProvider: str
     AuditApiKey: str
     OpenAIBaseUrl: str
@@ -42,6 +44,8 @@ class ConfigManager:
     DEFAULT_ENABLE_MOTD = True
     DEFAULT_ENABLE_AUTH = True
     DEFAULT_ENABLE_SENSITIVE_FILTER = True
+    DEFAULT_ENABLE_CHAT_ALLOW_LIST = True
+    DEFAULT_ENABLE_IFDIAN_ACTIVE = True
     DEFAULT_GENERATE_IMG_URL = "http://127.0.0.1:2087/{IMGID}.png"
     DEFAULT_AUDIT_PROVIDER = "uapi"
     DEFAULT_AUDIT_API_KEY = ""
@@ -170,6 +174,8 @@ class ConfigManager:
             "EnableMotd": self._OptionalBool(data, "EnableMotd", self.DEFAULT_ENABLE_MOTD),
             "EnableAuth": self._OptionalBool(data, "EnableAuth", self.DEFAULT_ENABLE_AUTH),
             "EnableSensitiveFilter": self._OptionalBool(data, "EnableSensitiveFilter", self.DEFAULT_ENABLE_SENSITIVE_FILTER),
+            "EnableChatAllowList": self._OptionalBool(data, "EnableChatAllowList", self.DEFAULT_ENABLE_CHAT_ALLOW_LIST),
+            "EnableIfdianActive": self._OptionalBool(data, "EnableIfdianActive", self.DEFAULT_ENABLE_IFDIAN_ACTIVE),
             "AuditProvider": self._OptionalStringAllowEmpty(data, "AuditProvider", self.DEFAULT_AUDIT_PROVIDER),
             "AuditApiKey": self._OptionalStringAllowEmpty(data, "AuditApiKey", self.DEFAULT_AUDIT_API_KEY),
             "OpenAIBaseUrl": self._OptionalStringAllowEmpty(data, "OpenAIBaseUrl", self.DEFAULT_OPENAI_BASE_URL),

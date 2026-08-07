@@ -225,47 +225,60 @@ class ChatRelayManager:
         if not bindings:
             return False
 
+        # 配置开关: 群聊白名单 / 激活查询系统(都关闭时直接发送)
+        enable_allow_list = _config_manager.Get("EnableChatAllowList", ConfigManager.DEFAULT_ENABLE_CHAT_ALLOW_LIST)
+        enable_ifdian_active = _config_manager.Get("EnableIfdianActive", ConfigManager.DEFAULT_ENABLE_IFDIAN_ACTIVE)
+
         # 提前过滤允许列表，没有目标群则跳过审核直接返回
         allowed_groups: list[str] = []
         for row in bindings:
             group_id = row[0]
-            if await ChatAllowListRepositoryInstance.IsAllowed(group_id):
+            if not enable_allow_list or await ChatAllowListRepositoryInstance.IsAllowed(group_id):
                 allowed_groups.append(group_id)
 
         if not allowed_groups:
             return False
 
-        # 群服互通检测: 激活群可递交 AI 审核，未激活群仅本地屏蔽词过滤
-        try:
-            active_results = await asyncio.gather(
-                *(IsGroupActive(group_id) for group_id in allowed_groups)
-            )
-        except Exception as exc:
-            _log.error(f"查询群互通状态失败: {exc}")
-            active_results = []
-        active_set = {
-            group_id
-            for group_id, active in zip(allowed_groups, active_results)
-            if active
-        }
-
-        # 激活群: 本地 Trie 首检 + 在线 AI 二审
-        active_content = None
-        if active_set:
-            current_audit_group_id.set(",".join(sorted(active_set)))
+        if not enable_ifdian_active:
+            # 未启用激活查询系统: 不检查互通, 统一审核后直接发送
+            current_audit_group_id.set(",".join(sorted(allowed_groups)))
             filtered_msg = await ApplySensitiveFilter(msg)
-            active_content = f"{CHAT_MESSAGE_PREFIX.replace("{msgType}", msgType)}\n{filtered_msg}"
+            content = f"{CHAT_MESSAGE_PREFIX.replace("{msgType}", msgType)}\n{filtered_msg}"
 
-        # 未激活群: 仅本地屏蔽词替换为 *, 不经过 AI 审核
-        local_content = None
-        if len(active_set) < len(allowed_groups):
-            local_msg = LocalSensitiveReplace(msg)
-            local_content = f"{CHAT_MESSAGE_PREFIX.replace("{msgType}", msgType)}\n{local_msg}"
+            def _content_for(group_id: str) -> str:
+                """返回群对应的消息内容(未启用激活系统时所有群统一内容)。"""
+                return content
+        else:
+            # 群服互通检测: 激活群可递交 AI 审核，未激活群仅本地屏蔽词过滤
+            try:
+                active_results = await asyncio.gather(
+                    *(IsGroupActive(group_id) for group_id in allowed_groups)
+                )
+            except Exception as exc:
+                _log.error(f"查询群互通状态失败: {exc}")
+                active_results = []
+            active_set = {
+                group_id
+                for group_id, active in zip(allowed_groups, active_results)
+                if active
+            }
 
-        def _content_for(group_id: str) -> str:
-            """返回群对应的消息内容(激活群用 AI 审核结果, 未激活群用本地屏蔽结果)。"""
-            return active_content if group_id in active_set else local_content
+            # 激活群: 本地 Trie 首检 + 在线 AI 二审
+            active_content = None
+            if active_set:
+                current_audit_group_id.set(",".join(sorted(active_set)))
+                filtered_msg = await ApplySensitiveFilter(msg)
+                active_content = f"{CHAT_MESSAGE_PREFIX.replace("{msgType}", msgType)}\n{filtered_msg}"
 
+            # 未激活群: 仅本地屏蔽词替换为 *, 不经过 AI 审核
+            local_content = None
+            if len(active_set) < len(allowed_groups):
+                local_msg = LocalSensitiveReplace(msg)
+                local_content = f"{CHAT_MESSAGE_PREFIX.replace("{msgType}", msgType)}\n{local_msg}"
+
+            def _content_for(group_id: str) -> str:
+                """返回群对应的消息内容(激活群用 AI 审核结果, 未激活群用本地屏蔽结果)。"""
+                return active_content if group_id in active_set else local_content
         # 1) 第一遍：遍历允许群直接发送，失败收集到重试列表
         failed_groups: list[str] = []
         for group_id in allowed_groups:
