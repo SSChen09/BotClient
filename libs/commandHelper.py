@@ -43,7 +43,7 @@ class CommandGuardService:
         if mode == "onlyQQ":
             is_admin = qq_admin
         elif mode == "both":
-            is_admin = qq_admin and db_admin
+            is_admin = qq_admin or db_admin
         else:
             is_admin = db_admin
         if is_admin:

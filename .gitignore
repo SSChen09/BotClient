@@ -21,7 +21,6 @@ AGENTS.md
 *.ttf
 .deepseek/*
 .codewhale/*
-*/ymbotpy/*
 config*
 
 # Byte-compiled / optimized / DLL files

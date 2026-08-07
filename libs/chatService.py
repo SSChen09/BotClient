@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import asyncio
 import time
 
 import ymbotpy
@@ -7,8 +8,9 @@ from ymbotpy import BotAPI, logging
 from ymbotpy.message import GroupMessage
 from ymbotpy.types.message import MarkdownPayload
 
+from libs.ifdianQuery import IsGroupActive
 from libs.repositories import BindRepositoryInstance, ChatAllowListRepositoryInstance
-from libs.SensitiveFilter import ApiSensitiveFilter, current_audit_group_id
+from libs.SensitiveFilter import ApiSensitiveFilter, LocalSensitiveReplace, current_audit_group_id
 from libs.configManager import ConfigManager
 from libs.generateImg import generate_img
 from libs.markdownManager import mdManager
@@ -233,9 +235,36 @@ class ChatRelayManager:
         if not allowed_groups:
             return False
 
-        current_audit_group_id.set(",".join(allowed_groups))
-        filtered_msg = await ApplySensitiveFilter(msg)
-        content = f"{CHAT_MESSAGE_PREFIX.replace("{msgType}", msgType)}\n{filtered_msg}"
+        # 群服互通检测: 激活群可递交 AI 审核，未激活群仅本地屏蔽词过滤
+        try:
+            active_results = await asyncio.gather(
+                *(IsGroupActive(group_id) for group_id in allowed_groups)
+            )
+        except Exception as exc:
+            _log.error(f"查询群互通状态失败: {exc}")
+            active_results = []
+        active_set = {
+            group_id
+            for group_id, active in zip(allowed_groups, active_results)
+            if active
+        }
+
+        # 激活群: 本地 Trie 首检 + 在线 AI 二审
+        active_content = None
+        if active_set:
+            current_audit_group_id.set(",".join(sorted(active_set)))
+            filtered_msg = await ApplySensitiveFilter(msg)
+            active_content = f"{CHAT_MESSAGE_PREFIX.replace("{msgType}", msgType)}\n{filtered_msg}"
+
+        # 未激活群: 仅本地屏蔽词替换为 *, 不经过 AI 审核
+        local_content = None
+        if len(active_set) < len(allowed_groups):
+            local_msg = LocalSensitiveReplace(msg)
+            local_content = f"{CHAT_MESSAGE_PREFIX.replace("{msgType}", msgType)}\n{local_msg}"
+
+        def _content_for(group_id: str) -> str:
+            """返回群对应的消息内容(激活群用 AI 审核结果, 未激活群用本地屏蔽结果)。"""
+            return active_content if group_id in active_set else local_content
 
         # 1) 第一遍：遍历允许群直接发送，失败收集到重试列表
         failed_groups: list[str] = []
@@ -243,7 +272,7 @@ class ChatRelayManager:
             try:
                 await self._bot_api.post_group_message(
                     group_openid=group_id,
-                    content=content,
+                    content=_content_for(group_id),
                 )
             except Exception as e:
                 #_log.error(f"群 {group_id} 发送失败: {e}")
@@ -269,7 +298,7 @@ class ChatRelayManager:
                     try:
                         await self._bot_api.post_group_message(
                             group_openid=group_id,
-                            content=content,
+                            content=_content_for(group_id),
                             msg_id=msg_obj["msg_id"],
                             msg_seq=msg_obj["current_seq"],
                         )

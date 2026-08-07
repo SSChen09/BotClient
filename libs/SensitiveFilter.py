@@ -380,3 +380,10 @@ class ApiSensitiveFilter:
         for hit in local_hits:
             cls._log_false_positive(hit, text, "OpenAI")
         return text
+
+def LocalSensitiveReplace(text: str) -> str:
+    """仅使用本地敏感词库将命中词替换为 *，不经过在线 AI 审核。
+
+    用于未激活群服的聊天消息（本地屏蔽后直接发送）。
+    """
+    return ApiSensitiveFilter._get_local_filter().replace(text)

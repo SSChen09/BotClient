@@ -26,6 +26,8 @@ class ConfigData(TypedDict):
     OpenAIApiKey: str
     OpenAIModel: str
     AdminId: list[str]
+    IfdianServerUrl: str
+    IfdianPayUrl: Any
 
 
 class ConfigManager:
@@ -47,6 +49,8 @@ class ConfigManager:
     DEFAULT_OPENAI_API_KEY = ""
     DEFAULT_OPENAI_MODEL = ""
     DEFAULT_ADMIN_ID = []
+    DEFAULT_IFDIAN_SERVER_URL = "http://127.0.0.1:5000"
+    DEFAULT_IFDIAN_PAY_URL: Any = ""
 
     def __init__(self, config_path: Optional[str] = None):
         """初始化配置管理器，并确定配置文件路径。"""
@@ -129,6 +133,21 @@ class ConfigManager:
             result.append(item)
         return result
 
+    @staticmethod
+    def _OptionalPayUrl(data: dict[str, Any], field: str, default: Any) -> Any:
+        """读取可选的爱发电购买链接配置，支持统一字符串或 {月数: URL} 映射。"""
+        value = data.get(field, default)
+        if isinstance(value, str):
+            return value.strip()
+        if isinstance(value, dict):
+            result: dict[str, str] = {}
+            for key, url in value.items():
+                if not isinstance(url, str):
+                    raise ValueError(f"配置项 {field} 的 {key} 必须为字符串")
+                result[str(key)] = url.strip()
+            return result
+        raise ValueError(f"配置项 {field} 必须为字符串或对象")
+
     def Validate(self, data: dict[str, Any]) -> ConfigData:
         """校验原始配置字典，并返回规范化后的配置对象。"""
         if not isinstance(data, dict):
@@ -157,6 +176,8 @@ class ConfigManager:
             "OpenAIApiKey": self._OptionalStringAllowEmpty(data, "OpenAIApiKey", self.DEFAULT_OPENAI_API_KEY),
             "OpenAIModel": self._OptionalStringAllowEmpty(data, "OpenAIModel", self.DEFAULT_OPENAI_MODEL),
             "AdminId": self._OptionalStringList(data, "AdminId", self.DEFAULT_ADMIN_ID),
+            "IfdianServerUrl": self._OptionalStringAllowEmpty(data, "IfdianServerUrl", self.DEFAULT_IFDIAN_SERVER_URL),
+            "IfdianPayUrl": self._OptionalPayUrl(data, "IfdianPayUrl", self.DEFAULT_IFDIAN_PAY_URL),
         }
 
     def Load(self) -> ConfigData:

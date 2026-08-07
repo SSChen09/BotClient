@@ -29,6 +29,11 @@ from libs.commandHelper import (
     SendServerSelectorWithCallback,
 )
 from libs.configManager import ConfigManager
+from libs.ifdianQuery import (
+    ActivateInterconnectCommand,
+    QueryInterconnectCommand,
+    SetInterconnectCommand,
+)
 from libs.motdService import MOTD_USAGE_TEXT, MotdCommandService
 from libs.repositories import (
     AdminModeRepositoryInstance,
@@ -567,7 +572,7 @@ async def SendGameMessage(api: BotAPI, message: GroupMessage, params=None):
                 {"msg": params, "nick": nick},
                 str(uuid.uuid4()),
             )
-            if not ws_ret:
+            if not ws_ret and not isFull:
                 await message.reply(content=BuildWsSendFailedText(server_id),msg_seq=_msg_seq)
 
     if isFull:
@@ -1080,6 +1085,8 @@ class BaseBotMixin:
             UnauthQQAvatar,
             AuthQQAvatar,
             SetFullAmount,
+            ActivateInterconnectCommand,
+            QueryInterconnectCommand,
         ]
         for handler in handlers:
             if await handler(api=self.bot_api, message=message):
@@ -1239,6 +1246,7 @@ class BaseBotMixin:
             C2C_AddChatAllowList,
             C2C_RemoveChatAllowList,
             C2C_ListChatAllowList,
+            SetInterconnectCommand,
         ]
         for handler in handlers:
             if await handler(api=self.bot_api, message=message):
