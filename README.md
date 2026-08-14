@@ -1,3 +1,7 @@
+# 源仓库: https://github.com/HuoHuas001/BotClient
+
+**仅作基本维护，如需重要的功能扩展，请前往主页QQ进行联系**
+
 # HuHoBot 机器人客户端
 
 [![Python Version](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/)
@@ -46,7 +50,7 @@ graph TD
 ### 安装运行
 ```bash
 # 克隆仓库
-git clone https://github.com/HuHoBot/Bot.git
+git clone https://github.com/SSChen09/BotClient.git
 
 # 安装依赖
 pip install -r requirements.txt
