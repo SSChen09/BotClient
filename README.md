@@ -1,4 +1,4 @@
-# 源仓库: https://github.com/HuoHuas001/BotClient
+# 源仓库: https://github.com/HuHoBot/BotClient
 
 **仅作基本维护，如需重要的功能扩展，请前往主页QQ进行联系**
 
