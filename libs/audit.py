@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import asyncio
 import os
 
 import ymbotpy
@@ -92,6 +93,7 @@ def main(APPID,SECRET):
     intents = ymbotpy.Intents.none()
     intents.public_messages=True
 
+    asyncio.set_event_loop(asyncio.new_event_loop())
     client = MyClient(intents=intents)
     client.run(appid=APPID, secret=SECRET)
 
